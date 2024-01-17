@@ -62,59 +62,55 @@ sns.histplot(competitor2_data['simple_return'], bins=30, label='Competitor 2', k
 plt.title('Return Distribution Histogram')
 plt.legend()
 
+stratus_data_cleaned = stratus_data.replace([np.inf, -np.inf], np.nan).dropna()
+HHH_data_cleaned = competitor1_data.replace([np.inf, -np.inf], np.nan).dropna()
+JOE_data_cleaned = competitor2_data.replace([np.inf, -np.inf], np.nan).dropna()
 
 def fit_ar_model(data):
     # Create the lagged_return column within the provided data DataFrame
-    data['lagged_return'] = data['simple_return'].shift(1)
-
-    # Check for missing and infinite values in lagged_return
-    missing_data = data['lagged_return'].isna()
-    infinite_data = np.isinf(data['lagged_return'])
-
-    # Filter out rows with missing or infinite values
-    data = data[~missing_data & ~infinite_data]
-
+    data_copy = data.copy()
+    data_copy['lagged_return'] = data_copy['simple_return'].shift(1)
     # Fit the AR(1) model
-    model = sm.OLS(data['simple_return'][1:], sm.add_constant(data['lagged_return'][1:]))
+    model = sm.OLS(data_copy['simple_return'][1:], sm.add_constant(data_copy['lagged_return'][1:]))
     results = model.fit()
     return results
 
 # Fit AR(1) model for each stock
-stratus_ar_results = fit_ar_model(stratus_data)
-competitor1_ar_results = fit_ar_model(competitor1_data)
-competitor2_ar_results = fit_ar_model(competitor2_data)
+stratus_ar_results = fit_ar_model(stratus_data_cleaned)
+competitor1_ar_results = fit_ar_model(HHH_data_cleaned)
+competitor2_ar_results = fit_ar_model(JOE_data_cleaned)
 
 # Display results
 print(stratus_ar_results.summary())
-print(competitor1_ar_results.summary())
-print(competitor2_ar_results.summary())
+#print(competitor1_ar_results.summary())
+#print(competitor2_ar_results.summary())
 
-
+#2)
 # After calculating returns
-stratus_data['DayOfWeek'] = stratus_data.index.dayofweek
-day_dummies = pd.get_dummies(stratus_data['DayOfWeek']).iloc[:, 0:4]  # Exclude one day to avoid multicollinearity
+stratus_data_cleaned['DayOfWeek'] = stratus_data_cleaned.index.dayofweek
+day_dummies = pd.get_dummies(stratus_data_cleaned['DayOfWeek'])
 
 # Regression for Day of the Week Effect
-Y = stratus_data['simple_return']
+Y = stratus_data_cleaned['simple_return']
 X = day_dummies
 model = sm.OLS(Y, X).fit()
 print(model.summary())
 
 # E autocorrelation test:
 
-acf_values = acf(stratus_data['simple_return'].dropna())
-pacf_values = pacf(stratus_data['simple_return'].dropna())
+acf_values = acf(stratus_data_cleaned['simple_return'].dropna())
+pacf_values = pacf(stratus_data_cleaned['simple_return'].dropna())
 
 # Plot ACF and PACF
-plot_acf(stratus_data['simple_return'].dropna())
-plot_pacf(stratus_data['simple_return'].dropna())
+plot_acf(stratus_data_cleaned['simple_return'].dropna())
+plot_pacf(stratus_data_cleaned['simple_return'].dropna())
 #share price 
-plot_acf(stratus_data['Adj Close'].dropna())
-plot_pacf(stratus_data['Adj Close'].dropna())
+plot_acf(stratus_data_cleaned['Adj Close'].dropna())
+plot_pacf(stratus_data_cleaned['Adj Close'].dropna())
 
 # AR(1) without constant
 # Remove NaNs and infinite values from the dataset
-stratus_data_cleaned = stratus_data.replace([np.inf, -np.inf], np.nan).dropna()
+
 
 # Then proceed with fitting the AR(1) model without a constant
 model_no_const = sm.OLS(stratus_data_cleaned['simple_return'][1:], stratus_data_cleaned['simple_return'].shift(1)[1:]).fit()
@@ -141,7 +137,7 @@ stratus_data_cleaned['DayOfWeek'] = stratus_data_cleaned.index.dayofweek
 
 # 3. Create Dummy Variables for the cleaned data
 day_dummies_cleaned = pd.get_dummies(stratus_data_cleaned['DayOfWeek'])
-day_dummies_cleaned.columns = ['D1', 'D2', 'D3', 'D4', 'D5']  # Rename columns for clarity
+day_dummies_cleaned.columns = ['D1', 'D2', 'D3', 'D4', 'D5'] 
 
 # 4. OLS Regression for Day-of-the-Week Effect 
 X_cleaned = day_dummies_cleaned
@@ -150,4 +146,48 @@ model_day_effect_cleaned = sm.OLS(Y_cleaned, X_cleaned).fit()
 print(model_day_effect_cleaned.summary())
 
 
+#residual checks
+plt.clf()
+predicted_values = model_day_effect_cleaned.predict(X_cleaned)
+residuals = Y_cleaned - predicted_values
+mean_residual = residuals.mean()
+print("Mean of Residuals:", mean_residual)
+plt.scatter(predicted_values, residuals)
+plt.axhline(y=0, color='r', linestyle='--')
+plt.xlabel('Predicted Values')
+plt.ylabel('Residuals')
+plt.title('Residuals vs Predicted Values')
 
+
+
+for column in X_cleaned.columns:
+    corr = residuals.corr(X_cleaned[column])
+    print(f"Correlation between residuals and {column}: {corr}")
+
+
+
+import scipy.stats as stats
+
+# Histogram of Residuals
+plt.hist(residuals, bins=30, edgecolor='black')
+plt.title('Histogram of Residuals')
+#plt.show()
+
+# Normality Test (e.g., Shapiro-Wilk)
+shapiro_test = stats.shapiro(residuals)
+print("Shapiro-Wilk Test:", shapiro_test)
+
+
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+
+# Assuming X_cleaned is a DataFrame of your independent variables
+correlation_matrix = X_cleaned.corr()
+print(correlation_matrix)
+
+# Assuming X_cleaned is your DataFrame of independent variables
+vif_data = pd.DataFrame()
+vif_data["feature"] = X_cleaned.columns
+vif_data["VIF"] = [variance_inflation_factor(X_cleaned.values, i) for i in range(len(X_cleaned.columns))]
+print(vif_data)
+print(X_cleaned.head())
